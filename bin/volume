@@ -1,0 +1,73 @@
+#!/bin/bash
+# volume - Start a volume server for MKV
+
+# Check if nginx is installed
+if ! command -v nginx &> /dev/null; then
+    echo "Error: nginx is not installed. Please install nginx before running this script."
+    exit 1
+fi
+
+# Default values
+PORT=3001
+DATA_DIR="/tmp/volume1"
+
+# Get arguments
+if [ -n "$1" ]; then
+    DATA_DIR="$1"
+fi
+
+if [ -n "$PORT" ]; then
+    PORT="${PORT:-3001}"
+fi
+
+# Create data directory if it doesn't exist
+mkdir -p "$DATA_DIR"
+echo "Using data directory: $DATA_DIR"
+echo "Starting volume server on port $PORT"
+
+# Generate a temporary nginx config
+CONFIG_FILE=$(mktemp)
+
+cat > "$CONFIG_FILE" << EOF
+worker_processes 1;
+daemon off;
+error_log stderr;
+pid $DATA_DIR/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    access_log /dev/stdout;
+    client_max_body_size 1G;
+    
+    server {
+        listen $PORT;
+        
+        location / {
+            root $DATA_DIR;
+            
+            # PUT handler
+            dav_methods PUT;
+            create_full_put_path on;
+            client_body_temp_path $DATA_DIR/tmp;
+            
+            # GET handler
+            sendfile on;
+            
+            # DELETE handler
+            dav_methods DELETE;
+        }
+    }
+}
+EOF
+
+# Create temp directory
+mkdir -p "$DATA_DIR/tmp"
+
+# Start nginx with the config
+nginx -c "$CONFIG_FILE"
+
+# Clean up config when the script is terminated
+trap "rm -f $CONFIG_FILE; echo 'Volume server stopped.'" EXIT INT TERM 

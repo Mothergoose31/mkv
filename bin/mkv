@@ -1,0 +1,83 @@
+#!/bin/bash
+# mkv - Command line interface for MKV distributed key-value store
+
+# Default values
+DB_PATH="/tmp/indexdb"
+PORT=3000
+REPLICAS=3
+VOLUMES="localhost:3001,localhost:3002,localhost:3003"
+SUBVOLUMES=10
+PROTECT=false
+FALLBACK=""
+MODE="server"
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    server|rebuild|rebalance)
+      MODE="$1"
+      shift
+      ;;
+    -db|--db)
+      DB_PATH="$2"
+      shift 2
+      ;;
+    -port|--port)
+      PORT="$2"
+      shift 2
+      ;;
+    -replicas|--replicas)
+      REPLICAS="$2"
+      shift 2
+      ;;
+    -volumes|--volumes)
+      VOLUMES="$2"
+      shift 2
+      ;;
+    -subvolumes|--subvolumes)
+      SUBVOLUMES="$2"
+      shift 2
+      ;;
+    -protect|--protect)
+      PROTECT=true
+      shift
+      ;;
+    -fallback|--fallback)
+      FALLBACK="$2"
+      shift 2
+      ;;
+    -h|--help)
+      echo "Usage: ./mkv <server, rebuild, rebalance>"
+      echo ""
+      echo "  -db string        Path to RocksDB"
+      echo "  -fallback string  Fallback server for missing keys"
+      echo "  -port int         Port for the server to listen on (default 3000)"
+      echo "  -protect          Force UNLINK before DELETE"
+      echo "  -replicas int     Amount of replicas to make of the data (default 3)"
+      echo "  -subvolumes int   Amount of subvolumes, disks per machine (default 10)"
+      echo "  -volumes string   Volumes to use for storage, comma separated"
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1"
+      echo "Use -h or --help for usage information"
+      exit 1
+      ;;
+  esac
+done
+
+# Set environment variables
+export MKV_DB_PATH="$DB_PATH"
+export MKV_PORT="$PORT"
+export MKV_REPLICAS="$REPLICAS"
+export MKV_VOLUMES="$VOLUMES"
+export MKV_SUBVOLUMES="$SUBVOLUMES"
+export MKV_PROTECT="$PROTECT"
+export MKV_FALLBACK="$FALLBACK"
+export MKV_MODE="$MODE"
+
+# Get the directory of this script
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+
+# Run the application using mix
+cd "$SCRIPT_DIR/.." && mix run --no-halt 
