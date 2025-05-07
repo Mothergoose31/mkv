@@ -15,12 +15,10 @@ defmodule Mkv.Operations do
     Logger.info("Volumes: #{inspect(volumes)}")
     Logger.info("Replicas: #{replicas}")
 
-    # Open the RocksDB instance
     db_path_charlist = String.to_charlist(db_path)
     {:ok, db} = :rocksdb.open(db_path_charlist, [create_if_missing: false])
 
     try do
-      # Iterate through all keys
       {:ok, iterator} = :rocksdb.iterator(db, [])
       :rocksdb.iterator_move(iterator, :first)
 
@@ -98,21 +96,47 @@ defmodule Mkv.Operations do
     volumes_to_remove = old_volumes -- target_volumes
 
     if length(volumes_to_add) > 0 do
-      source_volume = List.first(old_volumes)
-      data = fetch_data_from_volume(source_volume, path_on_volume)
+      source_volume =
+        Enum.find(old_volumes, &(&1 in volumes)) || List.first(old_volumes)
 
-      Enum.each(volumes_to_add, fn volume ->
-        put_to_volume(volume, path_on_volume, data)
-      end)
+      if source_volume do
+        case fetch_data_from_volume(source_volume, path_on_volume) do
+          {:ok, data_to_copy} ->
+            Enum.each(volumes_to_add, fn volume_to_add ->
+              case put_to_volume(volume_to_add, path_on_volume, data_to_copy) do
+                :ok ->
+                  Logger.debug("Successfully put data for key '#{key}' to volume '#{volume_to_add}' at path '#{path_on_volume}'")
+                {:error, put_error} ->
+                  Logger.error("Failed to put data for key '#{key}' to volume '#{volume_to_add}' at path '#{path_on_volume}'. Error: #{inspect(put_error)}")
+              end
+            end)
+          {:error, fetch_error} ->
+            Logger.error("Failed to fetch data for key '#{key}' from source volume '#{source_volume}' at path '#{path_on_volume}'. Cannot replicate to new volumes. Error: #{inspect(fetch_error)}")
+        end
+      else
+        Logger.error("No suitable source volume found in current configuration for key '#{key}' from old volumes: #{inspect(old_volumes)}. Cannot replicate to new volumes.")
+      end
     end
 
     new_value_location_info = {target_volumes, path_on_volume}
     new_value = :erlang.term_to_binary(new_value_location_info)
-    :rocksdb.put(db, key, new_value, [])
+    case :rocksdb.put(db, key, new_value, []) do
+      :ok ->
+        Logger.debug("Successfully updated index for key '#{key}' to new volumes: #{inspect(target_volumes)}")
+      {:error, db_put_error} ->
+        Logger.error("Failed to update index for key '#{key}'. Error: #{inspect(db_put_error)}")
+    end
 
-    Enum.each(volumes_to_remove, fn volume ->
-      delete_from_volume(volume, path_on_volume)
+    Enum.each(volumes_to_remove, fn volume_to_remove ->
+      case delete_from_volume(volume_to_remove, path_on_volume) do
+        :ok ->
+          Logger.debug("Successfully deleted data for key '#{key}' from volume '#{volume_to_remove}' at path '#{path_on_volume}'")
+        {:error, delete_error} ->
+          Logger.error("Failed to delete data for key '#{key}' from volume '#{volume_to_remove}' at path '#{path_on_volume}'. Error: #{inspect(delete_error)}")
+      end
     end)
+
+    :ok
   end
 
   defp scan_volume_files(volume) do
@@ -176,21 +200,49 @@ defmodule Mkv.Operations do
   defp fetch_data_from_volume(volume, path) do
     url = "http://" <> volume <> path
     Logger.debug("Fetching data from volume: #{url}")
-    # TODO: Implement
-    ""
+
+    case Finch.build(:get, url) |> Finch.request(Mkv.Finch) do
+      {:ok, %{status: 200, body: body}} ->
+        {:ok, body}
+      {:ok, %{status: status, body: body}} ->
+        Logger.error("Failed to fetch data from #{url}. Status: #{status}, Body: #{inspect(body)}")
+        {:error, {:http_error, status}}
+      {:error, reason} ->
+        Logger.error("Error fetching data from #{url}. Reason: #{inspect(reason)}")
+        {:error, reason}
+    end
   end
 
-  defp put_to_volume(volume, path, _data) do
+  defp put_to_volume(volume, path, data) do
     url = "http://" <> volume <> path
     Logger.debug("Putting data to volume: #{url}")
-    # TODO: Implement
-    :ok
+    headers = [{"content-type", "application/octet-stream"}]
+
+    case Finch.build(:put, url, headers, data) |> Finch.request(Mkv.Finch) do
+      {:ok, %{status: status}} when status in [200, 201, 204] ->
+        :ok
+      {:ok, %{status: status, body: body}} ->
+        Logger.error("Failed to put data to #{url}. Status: #{status}, Body: #{inspect(body)}")
+        {:error, {:http_error, status}}
+      {:error, reason} ->
+        Logger.error("Error putting data to #{url}. Reason: #{inspect(reason)}")
+        {:error, reason}
+    end
   end
 
   defp delete_from_volume(volume, path) do
     url = "http://" <> volume <> path
     Logger.debug("Deleting data from volume: #{url}")
-    # TODO: Implement
-    :ok
+
+    case Finch.build(:delete, url) |> Finch.request(Mkv.Finch) do
+      {:ok, %{status: status}} when status in [200, 204] ->
+        :ok
+      {:ok, %{status: status, body: body}} ->
+        Logger.error("Failed to delete data from #{url}. Status: #{status}, Body: #{inspect(body)}")
+        {:error, {:http_error, status}}
+      {:error, reason} ->
+        Logger.error("Error deleting data from #{url}. Reason: #{inspect(reason)}")
+        {:error, reason}
+    end
   end
 end
