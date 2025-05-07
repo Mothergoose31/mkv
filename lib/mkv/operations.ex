@@ -117,8 +117,27 @@ defmodule Mkv.Operations do
 
   defp scan_volume_files(volume) do
     Logger.info("Scanning volume #{volume}")
-    # TODO: Implement
-    []
+
+    url = "http://#{volume}/_list"
+
+    case Finch.build(:get, url) |> Finch.request(Mkv.Finch) do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, file_list} ->
+            Enum.map(file_list, fn %{"path" => path} ->
+              key = String.replace_prefix(path, "/data/", "")
+              {key, volume, path}
+            end)
+
+          {:error, _} ->
+            Logger.error("Failed to parse JSON response from volume #{volume}")
+            []
+        end
+
+      _ ->
+        Logger.error("Failed to get file listing from volume #{volume}")
+        []
+    end
   end
 
   defp group_by_key(files) do
