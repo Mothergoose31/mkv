@@ -37,7 +37,6 @@ defmodule Mkv.Application do
   end
 
   defp start_rebuild(config) do
-    # One-time operation, then exit
     case Mkv.Operations.rebuild(config) do
       {:ok, stats} ->
         IO.puts("Rebuild completed successfully.")
@@ -48,12 +47,11 @@ defmodule Mkv.Application do
         IO.puts("Rebuild failed: #{inspect(reason)}")
     end
 
-    # Exit the application
+
     System.stop(0)
   end
 
   defp start_rebalance(config) do
-    # One-time operation, then exit
     case Mkv.Operations.rebalance(config) do
       :ok ->
         IO.puts("Rebalance completed successfully.")
@@ -62,7 +60,7 @@ defmodule Mkv.Application do
         IO.puts("Rebalance failed: #{inspect(reason)}")
     end
 
-    # Exit the application
+
     System.stop(0)
   end
 
