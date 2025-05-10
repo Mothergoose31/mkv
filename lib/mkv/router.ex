@@ -7,14 +7,11 @@ defmodule Mkv.Router do
   plug :fetch_query_params
   plug :dispatch
 
-  # GET /?unlinked - List unlinked keys
   get "/" do
     case conn.params["unlinked"] do
       nil ->
-        # No unlinked parameter, handle normally (404 for root)
         send_resp(conn, 404, "Not Found")
       _ ->
-        # List unlinked keys
         case Mkv.Index.list_unlinked() do
           {:ok, keys} ->
             conn
@@ -28,17 +25,14 @@ defmodule Mkv.Router do
     end
   end
 
-  # GET /prefix?list - List keys with prefix
-  # GET /key - Get a specific key
   get "/:key_or_prefix" do
     key_or_prefix = conn.params["key_or_prefix"]
 
     case conn.params["list"] do
       nil ->
-        # Regular GET for a specific key
+
         case Mkv.Index.get(key_or_prefix) do
           {:ok, {volumes, path_on_volume}} ->
-            # Redirect to the first available volume
             redirect_url = "http://" <> List.first(volumes) <> path_on_volume
             conn
             |> put_resp_header("location", redirect_url)
@@ -53,7 +47,6 @@ defmodule Mkv.Router do
         end
 
       _ ->
-        # List keys with prefix
         case Mkv.Index.list_prefix(key_or_prefix) do
           {:ok, keys} ->
             conn
