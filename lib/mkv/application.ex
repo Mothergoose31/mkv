@@ -9,7 +9,7 @@ defmodule Mkv.Application do
   def start(_type, _args) do
     config = load_config()
 
-    # Check command mode
+
     mode = System.get_env("MKV_MODE", "server")
 
     case mode do
@@ -20,7 +20,7 @@ defmodule Mkv.Application do
       "rebalance" ->
         start_rebalance(config)
       _ ->
-        # Default to server mode
+
         start_server(config)
     end
   end
