@@ -1,9 +1,9 @@
 defmodule Mkv.Operations do
-  require Logger
+  require LoggerS
 
   @doc """
   Rebalances data across volumes.
-  Used when volumes are added or removed.
+  Used when volumes are added or removed..
   """
   def rebalance(config) do
     db_path = config[:db_path]
